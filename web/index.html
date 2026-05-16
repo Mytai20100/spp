@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPP — Service Process Panel</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&family=Geist:wght@300;400;500;600&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #0e0e0e;
+  --bg1:      #141414;
+  --bg2:      #1a1a1a;
+  --bg3:      #202020;
+  --bg4:      #272727;
+  --border:   #2e2e2e;
+  --border2:  #383838;
+  --text:     #e8e4dc;
+  --text2:    #a09a90;
+  --text3:    #635e57;
+  --accent:   #d4cfc6;
+  --green:    #6db87a;
+  --red:      #c46b6b;
+  --amber:    #c49b4b;
+  --mono:     'IBM Plex Mono', monospace;
+  --sans:     'Geist', 'Inter', system-ui, sans-serif;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; overflow: hidden; }
+
+/* Layout */
+.layout { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 48px 1fr; height: 100vh; }
+.topbar { grid-column: 1 / -1; background: var(--bg1); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 12px; }
+.sidebar { background: var(--bg1); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.main { background: var(--bg); overflow: hidden; display: flex; flex-direction: column; }
+
+/* Topbar */
+.logo { font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: 0.08em; color: var(--text); }
+.logo span { color: var(--text3); }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+.metric-pill { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.metric-pill .val { color: var(--text); font-weight: 500; min-width: 44px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.dot.amber { background: var(--amber); }
+.dot.red { background: var(--red); }
+
+/* Sidebar */
+.sidebar-section { padding: 16px 12px 8px; }
+.sidebar-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; color: var(--text3); text-transform: uppercase; padding: 0 8px; margin-bottom: 4px; }
+.nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 5px; cursor: pointer; color: var(--text2); transition: background 0.1s, color 0.1s; user-select: none; font-size: 13px; }
+.nav-item:hover { background: var(--bg3); color: var(--text); }
+.nav-item.active { background: var(--bg3); color: var(--text); }
+.nav-item svg { flex-shrink: 0; opacity: 0.6; }
+.nav-item.active svg { opacity: 1; }
+.nav-proc-list { overflow-y: auto; flex: 1; padding: 0 12px 12px; }
+.nav-proc { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 5px; cursor: pointer; color: var(--text2); transition: background 0.1s, color 0.1s; }
+.nav-proc:hover { background: var(--bg3); color: var(--text); }
+.nav-proc.active { background: var(--bg3); color: var(--text); }
+.nav-proc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: var(--text3); }
+.status-dot.running { background: var(--green); }
+.status-dot.crashed { background: var(--red); }
+.status-dot.starting { background: var(--amber); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* Views */
+.view { display: none; flex: 1; overflow: hidden; }
+.view.active { display: flex; flex-direction: column; }
+
+/* Dashboard */
+.dash-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); margin: 0; }
+.dash-card { background: var(--bg1); padding: 20px 22px; }
+.card-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; color: var(--text3); text-transform: uppercase; margin-bottom: 8px; }
+.card-val { font-family: var(--mono); font-size: 26px; font-weight: 300; color: var(--text); line-height: 1; }
+.card-sub { font-family: var(--mono); font-size: 11px; color: var(--text3); margin-top: 6px; }
+.progress-bar { height: 2px; background: var(--bg3); border-radius: 1px; margin-top: 10px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--text2); border-radius: 1px; transition: width 0.5s; }
+.progress-fill.warn { background: var(--amber); }
+.progress-fill.crit { background: var(--red); }
+
+.process-table-wrap { flex: 1; overflow-y: auto; }
+.section-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+.section-title { font-size: 12px; font-weight: 500; color: var(--text2); letter-spacing: 0.04em; text-transform: uppercase; font-family: var(--mono); }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; }
+thead tr { border-bottom: 1px solid var(--border); }
+th { padding: 10px 16px; text-align: left; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; color: var(--text3); font-weight: 400; text-transform: uppercase; }
+tbody tr { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+tbody tr:hover { background: var(--bg2); }
+tbody tr:last-child { border-bottom: none; }
+td { padding: 12px 16px; color: var(--text); }
+td.mono { font-family: var(--mono); font-size: 12px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 3px; font-family: var(--mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+.badge.running { background: rgba(109,184,122,0.12); color: var(--green); }
+.badge.stopped { background: rgba(255,255,255,0.05); color: var(--text3); }
+.badge.crashed { background: rgba(196,107,107,0.12); color: var(--red); }
+.badge.starting { background: rgba(196,155,75,0.12); color: var(--amber); }
+.row-actions { display: flex; gap: 4px; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 4px; border: 1px solid var(--border2); background: var(--bg3); color: var(--text2); font-family: var(--sans); font-size: 12px; cursor: pointer; transition: all 0.12s; font-weight: 400; }
+.btn:hover { background: var(--bg4); color: var(--text); border-color: var(--border2); }
+.btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 500; }
+.btn-primary:hover { background: var(--accent); border-color: var(--accent); }
+.btn-danger { border-color: rgba(196,107,107,0.3); color: var(--red); }
+.btn-danger:hover { background: rgba(196,107,107,0.1); }
+.btn-sm { padding: 3px 9px; font-size: 11px; }
+.btn-icon { padding: 5px; border-radius: 4px; }
+
+/* Process detail view */
+.proc-detail { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.proc-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+.proc-header-info { flex: 1; }
+.proc-name { font-size: 15px; font-weight: 500; color: var(--text); }
+.proc-cmd { font-family: var(--mono); font-size: 11px; color: var(--text3); margin-top: 3px; }
+.proc-header-actions { display: flex; gap: 6px; }
+.proc-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); }
+.tab { padding: 10px 18px; font-size: 12px; color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.1s; font-family: var(--mono); }
+.tab:hover { color: var(--text2); }
+.tab.active { color: var(--text); border-bottom-color: var(--text2); }
+.tab-content { flex: 1; display: none; overflow: hidden; flex-direction: column; }
+.tab-content.active { display: flex; }
+
+/* Terminal */
+.terminal { flex: 1; background: var(--bg); overflow-y: auto; padding: 12px 16px; font-family: var(--mono); font-size: 12px; line-height: 1.7; }
+.terminal::-webkit-scrollbar { width: 6px; }
+.terminal::-webkit-scrollbar-track { background: transparent; }
+.terminal::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+.log-line { white-space: pre-wrap; word-break: break-all; }
+.log-line.stderr { color: #c47a7a; }
+.log-line.system { color: var(--text3); font-style: italic; }
+.log-line.stdout { color: var(--text); }
+.terminal-input-row { display: flex; align-items: center; border-top: 1px solid var(--border); padding: 8px 12px; gap: 8px; }
+.terminal-input-row span { font-family: var(--mono); font-size: 12px; color: var(--text3); }
+.terminal-input { flex: 1; background: transparent; border: none; outline: none; font-family: var(--mono); font-size: 12px; color: var(--text); caret-color: var(--text); }
+
+/* Modal */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); display: flex; align-items: center; justify-content: center; z-index: 100; }
+.modal-overlay.hidden { display: none; }
+.modal { background: var(--bg1); border: 1px solid var(--border2); border-radius: 8px; width: 480px; max-width: 95vw; }
+.modal-header { padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.modal-title { font-size: 14px; font-weight: 500; }
+.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field label { font-size: 11px; color: var(--text2); font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; }
+.field input, .field select, .field textarea {
+  background: var(--bg); border: 1px solid var(--border2); border-radius: 4px;
+  padding: 7px 10px; color: var(--text); font-family: var(--sans); font-size: 13px; outline: none;
+  transition: border-color 0.15s;
+}
+.field input:focus, .field select:focus, .field textarea:focus { border-color: var(--text3); }
+.field textarea { font-family: var(--mono); font-size: 12px; resize: vertical; min-height: 60px; }
+.field select option { background: var(--bg2); }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Stats panel */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border); }
+.stat-cell { background: var(--bg1); padding: 16px 18px; }
+.stat-label { font-family: var(--mono); font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+.stat-val { font-family: var(--mono); font-size: 18px; font-weight: 400; color: var(--text); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+* { scrollbar-width: thin; scrollbar-color: var(--bg4) transparent; }
+
+/* Empty state */
+.empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text3); }
+.empty-state p { font-size: 13px; }
+
+/* Animations */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.view.active { animation: fadeIn 0.15s ease; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="logo">SPP<span>/panel</span></div>
+    <div style="width:1px;height:20px;background:var(--border);margin:0 4px;"></div>
+    <div class="topbar-right">
+      <div class="metric-pill">
+        <span style="color:var(--text3);font-size:10px;">CPU</span>
+        <span class="val" id="tb-cpu">0%</span>
+      </div>
+      <div class="metric-pill">
+        <span style="color:var(--text3);font-size:10px;">MEM</span>
+        <span class="val" id="tb-mem">0%</span>
+      </div>
+      <div class="metric-pill">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.2" opacity="0.5"/></svg>
+        <span class="val" id="tb-rx">0 B/s</span>
+      </div>
+      <div class="metric-pill">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.2" opacity="0.5"/></svg>
+        <span class="val" id="tb-tx">0 B/s</span>
+      </div>
+      <div class="metric-pill"><div class="dot" id="conn-dot"></div><span id="conn-label" style="font-size:10px;color:var(--text3)">connected</span></div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="nav-item active" data-view="dashboard" onclick="showView('dashboard',this)">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/><rect x="8" y="1" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/><rect x="1" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/><rect x="8" y="8" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>
+        Overview
+      </div>
+    </div>
+    <div class="sidebar-section" style="padding-top:0">
+      <div class="sidebar-label">Processes</div>
+    </div>
+    <div class="nav-proc-list" id="sidebar-procs"></div>
+    <div style="padding:12px;border-top:1px solid var(--border);">
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="openAddModal()">
+        <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M5.5 1v9M1 5.5h9" stroke="currentColor" stroke-width="1.5"/></svg>
+        New Process
+      </button>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+
+    <!-- Dashboard view -->
+    <div class="view active" id="view-dashboard">
+      <div class="dash-grid">
+        <div class="dash-card">
+          <div class="card-label">CPU Usage</div>
+          <div class="card-val" id="d-cpu">0<span style="font-size:14px">%</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="d-cpu-bar" style="width:0%"></div></div>
+          <div class="card-sub" id="d-load">load: 0.00 0.00 0.00</div>
+        </div>
+        <div class="dash-card">
+          <div class="card-label">Memory</div>
+          <div class="card-val" id="d-mem">0<span style="font-size:14px">%</span></div>
+          <div class="progress-bar"><div class="progress-fill" id="d-mem-bar" style="width:0%"></div></div>
+          <div class="card-sub" id="d-mem-sub">0 / 0</div>
+        </div>
+        <div class="dash-card">
+          <div class="card-label">Network In</div>
+          <div class="card-val" id="d-rx" style="font-size:18px">0 B/s</div>
+          <div class="card-sub" id="d-rx-total">total: 0</div>
+        </div>
+        <div class="dash-card">
+          <div class="card-label">Network Out</div>
+          <div class="card-val" id="d-tx" style="font-size:18px">0 B/s</div>
+          <div class="card-sub" id="d-uptime">uptime: —</div>
+        </div>
+      </div>
+
+      <div class="section-header" style="margin-top:0;">
+        <span class="section-title">Processes</span>
+        <button class="btn btn-sm" onclick="openAddModal()">+ Add</button>
+      </div>
+      <div class="process-table-wrap">
+        <table id="proc-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Status</th>
+              <th>PID</th>
+              <th>Command</th>
+              <th>Auto Restart</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="proc-tbody"></tbody>
+        </table>
+        <div class="empty-state" id="proc-empty" style="display:none;padding:40px 0;">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3"><rect x="4" y="6" width="24" height="20" rx="2"/><path d="M4 11h24"/><path d="M10 16h8M10 20h5"/></svg>
+          <p>No processes configured</p>
+          <button class="btn btn-sm" onclick="openAddModal()">Add your first process</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Process detail view -->
+    <div class="view" id="view-process">
+      <div class="proc-detail" id="proc-detail-container"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Add/Edit Modal -->
+<div class="modal-overlay hidden" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Add Process</span>
+      <button class="btn btn-icon" onclick="closeModal()">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Name</label>
+        <input id="f-name" placeholder="My Server" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Command</label>
+          <input id="f-cmd" placeholder="/usr/bin/node" />
+        </div>
+        <div class="field">
+          <label>Arguments</label>
+          <input id="f-args" placeholder="server.js --port 3000" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Working Directory</label>
+        <input id="f-workdir" placeholder="/home/user/myapp" />
+      </div>
+      <div class="field">
+        <label>Environment Variables</label>
+        <textarea id="f-env" placeholder="NODE_ENV=production&#10;PORT=3000"></textarea>
+      </div>
+      <div class="field">
+        <label>Auto Restart</label>
+        <select id="f-restart">
+          <option value="never">Never</option>
+          <option value="on_crash">On Crash</option>
+          <option value="always">Always (on boot + crash)</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="modal-save-btn" onclick="saveProcess()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== State =====
+let processes = [];
+let currentProcId = null;
+let editingId = null;
+let metricsES = null;
+let logsES = null;
+let logBuffers = {};
+let autoScroll = true;
+
+// ===== Init =====
+document.addEventListener('DOMContentLoaded', () => {
+  connectMetrics();
+  loadProcesses();
+  setInterval(loadProcesses, 3000);
+});
+
+// ===== Metrics =====
+function connectMetrics() {
+  if (metricsES) metricsES.close();
+  metricsES = new EventSource('/api/metrics/stream');
+  metricsES.onmessage = e => {
+    const m = JSON.parse(e.data);
+    updateMetrics(m);
+  };
+  metricsES.onerror = () => {
+    document.getElementById('conn-dot').className = 'dot red';
+    document.getElementById('conn-label').textContent = 'disconnected';
+    setTimeout(connectMetrics, 3000);
+  };
+  metricsES.onopen = () => {
+    document.getElementById('conn-dot').className = 'dot';
+    document.getElementById('conn-label').textContent = 'connected';
+  };
+
+  // Also do initial fetch
+  fetch('/api/metrics').then(r=>r.json()).then(updateMetrics).catch(()=>{});
+}
+
+function updateMetrics(m) {
+  const cpu = m.cpu_percent.toFixed(1);
+  const mem = m.mem_percent.toFixed(1);
+
+  // Topbar
+  document.getElementById('tb-cpu').textContent = cpu + '%';
+  document.getElementById('tb-mem').textContent = mem + '%';
+  document.getElementById('tb-rx').textContent = fmtRate(m.net_rx_rate);
+  document.getElementById('tb-tx').textContent = fmtRate(m.net_tx_rate);
+
+  // Dashboard
+  document.getElementById('d-cpu').innerHTML = Math.round(m.cpu_percent) + '<span style="font-size:14px">%</span>';
+  document.getElementById('d-mem').innerHTML = Math.round(m.mem_percent) + '<span style="font-size:14px">%</span>';
+  document.getElementById('d-rx').textContent = fmtRate(m.net_rx_rate);
+  document.getElementById('d-tx').textContent = fmtRate(m.net_tx_rate);
+  document.getElementById('d-load').textContent = 'load: ' + (m.load_avg || '—');
+  document.getElementById('d-rx-total').textContent = 'total rx: ' + fmtBytes(m.net_rx_bytes);
+  document.getElementById('d-uptime').textContent = 'uptime: ' + fmtUptime(m.uptime);
+
+  const cpuBar = document.getElementById('d-cpu-bar');
+  cpuBar.style.width = Math.min(100, m.cpu_percent).toFixed(1) + '%';
+  cpuBar.className = 'progress-fill' + (m.cpu_percent > 85 ? ' crit' : m.cpu_percent > 60 ? ' warn' : '');
+
+  const memBar = document.getElementById('d-mem-bar');
+  memBar.style.width = Math.min(100, m.mem_percent).toFixed(1) + '%';
+  memBar.className = 'progress-fill' + (m.mem_percent > 85 ? ' crit' : m.mem_percent > 60 ? ' warn' : '');
+
+  const memSub = document.getElementById('d-mem-sub');
+  if (m.mem_total > 0) {
+    memSub.textContent = fmtBytes(m.mem_used) + ' / ' + fmtBytes(m.mem_total);
+  }
+}
+
+// ===== Processes =====
+function loadProcesses() {
+  fetch('/api/processes').then(r => r.json()).then(data => {
+    processes = data || [];
+    renderSidebar();
+    renderTable();
+    if (currentProcId) updateProcHeader(currentProcId);
+  }).catch(() => {});
+}
+
+function renderSidebar() {
+  const el = document.getElementById('sidebar-procs');
+  if (!processes.length) { el.innerHTML = '<div style="padding:8px 10px;color:var(--text3);font-size:11px;font-family:var(--mono)">no processes</div>'; return; }
+  el.innerHTML = processes.map(p => `
+    <div class="nav-proc ${p.id === currentProcId ? 'active' : ''}" onclick="openProcess('${p.id}')">
+      <div class="status-dot ${p.status}"></div>
+      <span class="nav-proc-name">${esc(p.name)}</span>
+    </div>
+  `).join('');
+}
+
+function renderTable() {
+  const tbody = document.getElementById('proc-tbody');
+  const empty = document.getElementById('proc-empty');
+  if (!processes.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = processes.map(p => `
+    <tr onclick="openProcess('${p.id}')">
+      <td style="font-weight:500">${esc(p.name)}</td>
+      <td><span class="badge ${p.status}"><span class="status-dot ${p.status}" style="width:5px;height:5px"></span>${p.status}</span></td>
+      <td class="mono">${p.pid || '—'}</td>
+      <td class="mono" style="color:var(--text3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.command)} ${(p.args||[]).join(' ')}</td>
+      <td class="mono" style="color:var(--text3)">${p.auto_restart}</td>
+      <td onclick="event.stopPropagation()">
+        <div class="row-actions">
+          ${p.status === 'running' || p.status === 'starting'
+            ? `<button class="btn btn-sm" onclick="procAction('${p.id}','stop')">Stop</button>
+               <button class="btn btn-sm" onclick="procAction('${p.id}','restart')">Restart</button>`
+            : `<button class="btn btn-sm btn-primary" onclick="procAction('${p.id}','start')">Start</button>`}
+          <button class="btn btn-sm" onclick="openEditModal('${p.id}')">Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteProc('${p.id}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function procAction(id, action) {
+  await fetch(`/api/processes/${id}/${action}`, { method: 'POST' });
+  loadProcesses();
+}
+
+async function deleteProc(id) {
+  if (!confirm('Delete this process?')) return;
+  await fetch(`/api/processes/${id}`, { method: 'DELETE' });
+  if (currentProcId === id) {
+    currentProcId = null;
+    showView('dashboard', document.querySelector('[data-view=dashboard]'));
+  }
+  loadProcesses();
+}
+
+// ===== Process Detail =====
+function openProcess(id) {
+  currentProcId = id;
+  showView('process', null);
+
+  // Update sidebar active
+  document.querySelectorAll('.nav-proc').forEach(el => el.classList.remove('active'));
+  event && event.currentTarget && event.currentTarget.classList.add('active');
+  renderSidebar();
+
+  const p = processes.find(x => x.id === id);
+  if (!p) return;
+
+  renderProcDetail(p);
+  connectLogs(id);
+  loadDisk(id);
+}
+
+function renderProcDetail(p) {
+  const container = document.getElementById('proc-detail-container');
+  container.innerHTML = `
+    <div class="proc-header">
+      <div class="status-dot ${p.status}" style="width:10px;height:10px;flex-shrink:0"></div>
+      <div class="proc-header-info">
+        <div class="proc-name">${esc(p.name)}</div>
+        <div class="proc-cmd">${esc(p.command)} ${(p.args||[]).join(' ')}</div>
+      </div>
+      <div class="proc-header-actions">
+        ${p.status === 'running' || p.status === 'starting'
+          ? `<button class="btn btn-sm" onclick="procAction('${p.id}','stop')">Stop</button>
+             <button class="btn btn-sm" onclick="procAction('${p.id}','restart')">Restart</button>`
+          : `<button class="btn btn-sm btn-primary" onclick="procAction('${p.id}','start')">Start</button>`}
+        <button class="btn btn-sm" onclick="openEditModal('${p.id}')">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteProc('${p.id}')">Delete</button>
+      </div>
+    </div>
+
+    <div class="proc-tabs">
+      <div class="tab active" onclick="switchTab('terminal',this)">Terminal</div>
+      <div class="tab" onclick="switchTab('info',this)">Info</div>
+    </div>
+
+    <div class="tab-content active" id="tab-terminal">
+      <div class="terminal" id="terminal-${p.id}" style="min-height:0"></div>
+      <div class="terminal-input-row">
+        <span>$</span>
+        <input class="terminal-input" id="stdin-input-${p.id}" placeholder="Send input to process..." onkeydown="handleStdinKey(event,'${p.id}')" />
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-info">
+      <div style="padding:20px;overflow-y:auto;flex:1;">
+        <div class="stats-grid" style="margin-bottom:1px">
+          <div class="stat-cell"><div class="stat-label">Status</div><div class="stat-val"><span class="badge ${p.status}">${p.status}</span></div></div>
+          <div class="stat-cell"><div class="stat-label">PID</div><div class="stat-val">${p.pid || '—'}</div></div>
+          <div class="stat-cell"><div class="stat-label">Auto Restart</div><div class="stat-val" style="font-size:13px">${p.auto_restart}</div></div>
+          <div class="stat-cell"><div class="stat-label">Disk Usage</div><div class="stat-val" id="disk-val-${p.id}" style="font-size:13px">—</div></div>
+          <div class="stat-cell"><div class="stat-label">Work Dir</div><div class="stat-val" style="font-size:11px;font-family:var(--mono);word-break:break-all">${esc(p.work_dir||'(default)')}</div></div>
+          <div class="stat-cell"><div class="stat-label">Created</div><div class="stat-val" style="font-size:12px">${p.created_at ? new Date(p.created_at).toLocaleDateString() : '—'}</div></div>
+        </div>
+        ${p.env && p.env.length ? `
+        <div style="margin-top:16px">
+          <div class="card-label" style="margin-bottom:8px">Environment</div>
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.8">${p.env.map(e=>`<div>${esc(e)}</div>`).join('')}</div>
+        </div>` : ''}
+      </div>
+    </div>
+  `;
+  // Repopulate logs
+  renderStoredLogs(p.id);
+}
+
+function updateProcHeader(id) {
+  const p = processes.find(x => x.id === id);
+  if (!p) return;
+  // Update status dot
+  const dot = document.querySelector('.proc-header .status-dot');
+  if (dot) { dot.className = 'status-dot ' + p.status; dot.style.cssText = 'width:10px;height:10px;flex-shrink:0'; }
+  // Update badge in info tab
+  const badge = document.querySelector(`#tab-info .badge`);
+  if (badge) { badge.className = 'badge ' + p.status; badge.textContent = p.status; }
+}
+
+function switchTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ===== Logs =====
+function connectLogs(id) {
+  if (logsES) logsES.close();
+  if (!logBuffers[id]) logBuffers[id] = [];
+
+  // Fetch existing logs
+  fetch(`/api/processes/logs/${id}`).then(r => r.json()).then(logs => {
+    logBuffers[id] = logs || [];
+    renderStoredLogs(id);
+  });
+
+  logsES = new EventSource(`/api/processes/logs/stream/${id}`);
+  logsES.onmessage = e => {
+    const line = JSON.parse(e.data);
+    if (!logBuffers[id]) logBuffers[id] = [];
+    logBuffers[id].push(line);
+    if (logBuffers[id].length > 2000) logBuffers[id].shift();
+    appendLogLine(id, line);
+  };
+}
+
+function renderStoredLogs(id) {
+  const term = document.getElementById(`terminal-${id}`);
+  if (!term) return;
+  term.innerHTML = '';
+  (logBuffers[id] || []).forEach(l => appendLogLine(id, l, false));
+  term.scrollTop = term.scrollHeight;
+}
+
+function appendLogLine(id, line, scroll = true) {
+  const term = document.getElementById(`terminal-${id}`);
+  if (!term) return;
+  const div = document.createElement('div');
+  div.className = 'log-line ' + (line.stream || 'stdout');
+  const time = new Date(line.time).toLocaleTimeString('en-US', {hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  div.innerHTML = `[${time}] ${ansiToHtml(line.content)}`;
+  term.appendChild(div);
+  if (scroll && autoScroll) term.scrollTop = term.scrollHeight;
+}
+
+function handleStdinKey(e, id) {
+  if (e.key !== 'Enter') return;
+  const input = e.target;
+  const data = input.value;
+  input.value = '';
+  fetch(`/api/processes/stdin/${id}`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({data})
+  });
+}
+
+async function loadDisk(id) {
+  try {
+    const r = await fetch(`/api/processes/disk/${id}`);
+    const d = await r.json();
+    const el = document.getElementById(`disk-val-${id}`);
+    if (el) el.textContent = d.formatted || '—';
+  } catch {}
+}
+
+// ===== Modal =====
+function openAddModal() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Add Process';
+  document.getElementById('modal-save-btn').textContent = 'Add Process';
+  document.getElementById('f-name').value = '';
+  document.getElementById('f-cmd').value = '';
+  document.getElementById('f-args').value = '';
+  document.getElementById('f-workdir').value = '';
+  document.getElementById('f-env').value = '';
+  document.getElementById('f-restart').value = 'never';
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  setTimeout(() => document.getElementById('f-name').focus(), 50);
+}
+
+function openEditModal(id) {
+  const p = processes.find(x => x.id === id);
+  if (!p) return;
+  editingId = id;
+  document.getElementById('modal-title').textContent = 'Edit Process';
+  document.getElementById('modal-save-btn').textContent = 'Save Changes';
+  document.getElementById('f-name').value = p.name || '';
+  document.getElementById('f-cmd').value = p.command || '';
+  document.getElementById('f-args').value = (p.args || []).join(' ');
+  document.getElementById('f-workdir').value = p.work_dir || '';
+  document.getElementById('f-env').value = (p.env || []).join('\n');
+  document.getElementById('f-restart').value = p.auto_restart || 'never';
+  document.getElementById('modal-overlay').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.add('hidden');
+}
+
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+async function saveProcess() {
+  const name = document.getElementById('f-name').value.trim();
+  const cmd = document.getElementById('f-cmd').value.trim();
+  if (!name || !cmd) { alert('Name and command are required'); return; }
+
+  const argsRaw = document.getElementById('f-args').value.trim();
+  const args = argsRaw ? argsRaw.split(/\s+/) : [];
+  const envRaw = document.getElementById('f-env').value.trim();
+  const env = envRaw ? envRaw.split('\n').map(l => l.trim()).filter(Boolean) : [];
+
+  const body = {
+    name,
+    command: cmd,
+    args,
+    work_dir: document.getElementById('f-workdir').value.trim(),
+    env,
+    auto_restart: document.getElementById('f-restart').value,
+  };
+
+  if (editingId) {
+    body.id = editingId;
+    await fetch(`/api/processes/${editingId}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  } else {
+    await fetch('/api/processes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  }
+
+  closeModal();
+  loadProcesses();
+}
+
+// ===== View switching =====
+function showView(name, navEl) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (navEl) navEl.classList.add('active');
+  if (name === 'dashboard') {
+    currentProcId = null;
+    if (logsES) logsES.close();
+    logsES = null;
+    renderSidebar();
+  }
+}
+
+// ===== Helpers =====
+// ── ANSI → HTML ────────────────────────────────────────────────────────────
+// Converts ANSI SGR escape sequences to <span> tags so the terminal renders
+// colours, bold, italic, underline, etc.  Unknown/unsupported codes are
+// silently dropped.  All plain text is HTML-escaped first.
+function ansiToHtml(raw) {
+  if (!raw) return '';
+
+  // Map standard 4-bit colour indices → CSS colour values (dark-theme tuned).
+  const FG4 = [
+    '#3d3d3d','#c47a7a','#6db87a','#c49b4b',  // 0–3  black red green yellow
+    '#6b9fd4','#b07ab8','#5fbfbf','#cccccc',  // 4–7  blue magenta cyan white
+    '#666666','#e08080','#80cc88','#e0b870',  // 8–11 bright variants
+    '#89b8e8','#cc99d6','#7adada','#eeeeee',  // 12–15
+  ];
+  const BG4 = FG4; // same palette for backgrounds
+
+  // Escape HTML special chars in a plain text segment.
+  const escSeg = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  // Build a CSS color string from a 256-colour index.
+  function color256(n) {
+    if (n < 16) return FG4[n];
+    if (n < 232) { // 6×6×6 cube
+      n -= 16;
+      const b = n % 6, g = Math.floor(n / 6) % 6, r = Math.floor(n / 36);
+      const c = v => Math.round(v ? 55 + v * 40 : 0);
+      return `rgb(${c(r)},${c(g)},${c(b)})`;
+    }
+    const v = Math.round((n - 232) / 23 * 255); // greyscale ramp 232–255
+    return `rgb(${v},${v},${v})`;
+  }
+
+  // Active SGR state.
+  let bold = false, italic = false, underline = false, dim = false;
+  let fg = null, bg = null;          // null = default colour
+
+  function openSpan() {
+    const styles = [];
+    if (fg) styles.push(`color:${fg}`);
+    if (bg) styles.push(`background:${bg}`);
+    if (bold)      styles.push('font-weight:bold');
+    if (dim)       styles.push('opacity:0.6');
+    if (italic)    styles.push('font-style:italic');
+    if (underline) styles.push('text-decoration:underline');
+    if (!styles.length) return '';
+    return `<span style="${styles.join(';')}">`;
+  }
+
+  // Split on ESC[ … m  (SGR sequences only; ignore other escape types).
+  // Regex captures both the codes string and any trailing plain text.
+  const RE = /\x1b\[([0-9;]*)m([^\x1b]*)/g;
+  let out = '';
+  let last = 0;
+  let spanOpen = false;
+
+  function flushText(txt) {
+    if (!txt) return;
+    if (spanOpen) { out += escSeg(txt); }
+    else {
+      const s = openSpan();
+      if (s) { out += s; spanOpen = true; out += escSeg(txt); }
+      else   { out += escSeg(txt); }
+    }
+  }
+
+  function closeSpan() {
+    if (spanOpen) { out += '</span>'; spanOpen = false; }
+  }
+
+  let m;
+  while ((m = RE.exec(raw)) !== null) {
+    // Plain text before this escape.
+    if (m.index > last) flushText(raw.slice(last, m.index));
+    last = m.index + m[0].length;
+
+    // Parse the semicolon-separated code list.
+    const codes = m[1] === '' ? [0] : m[1].split(';').map(Number);
+    closeSpan();
+
+    let i = 0;
+    while (i < codes.length) {
+      const c = codes[i++];
+      if (c === 0)  { bold=false;italic=false;underline=false;dim=false;fg=null;bg=null; }
+      else if (c===1)  bold=true;
+      else if (c===2)  dim=true;
+      else if (c===3)  italic=true;
+      else if (c===4)  underline=true;
+      else if (c===22) { bold=false; dim=false; }
+      else if (c===23) italic=false;
+      else if (c===24) underline=false;
+      else if (c>=30 && c<=37) fg = FG4[c-30];
+      else if (c===38) {
+        if (codes[i]===5) { fg=color256(codes[i+1]); i+=2; }
+        else if (codes[i]===2) { fg=`rgb(${codes[i+1]},${codes[i+2]},${codes[i+3]})`; i+=4; }
+      }
+      else if (c===39) fg=null;
+      else if (c>=40 && c<=47) bg = BG4[c-40];
+      else if (c===48) {
+        if (codes[i]===5) { bg=color256(codes[i+1]); i+=2; }
+        else if (codes[i]===2) { bg=`rgb(${codes[i+1]},${codes[i+2]},${codes[i+3]})`; i+=4; }
+      }
+      else if (c===49) bg=null;
+      else if (c>=90 && c<=97) fg = FG4[c-90+8];
+      else if (c>=100&&c<=107) bg = BG4[c-100+8];
+      // All other codes (cursor movement, etc.) are silently ignored.
+    }
+    // Append any trailing plain text after the 'm'.
+    if (m[2]) flushText(m[2]);
+  }
+
+  // Any text after the last escape.
+  if (last < raw.length) flushText(raw.slice(last));
+  closeSpan();
+  return out;
+}
+
+function esc(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmtBytes(b) {
+  if (!b) return '0 B';
+  const u = ['B','KB','MB','GB','TB'];
+  let i = 0;
+  while (b >= 1024 && i < u.length-1) { b /= 1024; i++; }
+  return b.toFixed(i>0?1:0) + ' ' + u[i];
+}
+function fmtRate(r) {
+  if (!r) return '0 B/s';
+  if (r < 1024) return r.toFixed(0) + ' B/s';
+  if (r < 1024*1024) return (r/1024).toFixed(1) + ' KB/s';
+  return (r/1024/1024).toFixed(1) + ' MB/s';
+}
+function fmtUptime(s) {
+  if (!s) return '—';
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  return `${h}h ${m}m`;
+}
+
+// Keyboard shortcut
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+</script>
+</body>
+</html>

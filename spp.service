@@ -1,0 +1,16 @@
+[Unit]
+Description=SPP Service Process Panel
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/spp
+ExecStart=/opt/spp/spp -config /opt/spp/spp.json
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
